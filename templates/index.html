@@ -92,11 +92,11 @@ async function scan() {
 
 
 
-    const r = await fetch("https://web-vulnerbility-scanner.onrender.com", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({url, endpoints})
-    });
+const r = await fetch("https://web-vulnerbility-scanner.onrender.com/scan", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({url, endpoints})
+});
 
     const data = await r.json();
     window.last_results = data;
