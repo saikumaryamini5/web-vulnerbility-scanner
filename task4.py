@@ -5,18 +5,24 @@ from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
 
-# Allow your Netlify domain to access the backend
-CORS(app, resources={r"/*": {"origins": "https://webscannerr.netlify.app"}})
+# Allow Netlify to access the backend
+CORS(app,
+     resources={r"/*": {"origins": "*"}},
+     supports_credentials=False)
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = 'https://webscannerr.netlify.app'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    return response
 
 
-# -------------------------
-#   Vulnerability Scanner
-# -------------------------
+# ------------------------- Vulnerability Scanner -------------------------
 class WebVulnScanner:
     def __init__(self):
         self.results = []
 
-        # Payloads
         self.xss_payloads = [
             "<script>alert('XSS')</script>",
             "<img src=x onerror=alert('XSS')>",
@@ -29,7 +35,6 @@ class WebVulnScanner:
             "1; DROP TABLE users--"
         ]
 
-        # Remediation database
         self.remediations = {
             'XSS': {
                 'type': 'XSS',
@@ -48,7 +53,6 @@ class WebVulnScanner:
             }
         }
 
-    # ---------------------- XSS Test ----------------------
     def test_xss(self, url, param, endpoint):
         for payload in self.xss_payloads:
             test_url = f"{url}{endpoint}?{param}={payload}"
@@ -60,7 +64,6 @@ class WebVulnScanner:
                 pass
         return False, None
 
-    # ---------------------- SQLi Test ----------------------
     def test_sqli(self, url, param, endpoint):
         for payload in self.sqli_payloads:
             test_url = f"{url}{endpoint}?{param}={payload}"
@@ -72,7 +75,6 @@ class WebVulnScanner:
                 pass
         return False, None
 
-    # ---------------------- Header Test ----------------------
     def test_headers(self, full_url):
         required = ['X-Frame-Options', 'Content-Security-Policy', 'Strict-Transport-Security']
         issues = []
@@ -85,11 +87,9 @@ class WebVulnScanner:
             pass
         return issues
 
-    # ---------------------- Endpoint Scan ----------------------
     def scan_endpoint(self, base_url, endpoint):
         result = {'endpoint': endpoint, 'vulnerabilities': [], 'risk_score': 0}
 
-        # XSS
         for param in ['q', 'search', 'id', 'name']:
             ok, payload = self.test_xss(base_url, param, endpoint)
             if ok:
@@ -98,7 +98,6 @@ class WebVulnScanner:
                 result['vulnerabilities'].append(v)
                 result['risk_score'] += 8
 
-        # SQL Injection
         for param in ['id', 'user', 'page']:
             ok, payload = self.test_sqli(base_url, param, endpoint)
             if ok:
@@ -107,7 +106,6 @@ class WebVulnScanner:
                 result['vulnerabilities'].append(v)
                 result['risk_score'] += 10
 
-        # Security Headers
         issues = self.test_headers(base_url + endpoint)
         for i in issues:
             v = self.remediations['Security Header Missing'].copy()
@@ -121,15 +119,17 @@ class WebVulnScanner:
 scanner = WebVulnScanner()
 
 
-# ------------------------- ROUTES -------------------------
-
 @app.route("/")
 def home():
-    return "Backend is running!"   # Render doesn't show templates
+    return "Backend running successfully!"
 
 
-@app.route("/scan", methods=["POST"])
+@app.route("/scan", methods=["POST", "OPTIONS"])
 def scan():
+    # Handle preflight
+    if request.method == "OPTIONS":
+        return "", 200
+
     data = request.json
     target_url = data["url"]
     endpoints = data.get("endpoints", ["/", "/login", "/search", "/admin", "/api/users"])
@@ -152,6 +152,5 @@ def scan():
     return jsonify(response)
 
 
-# ------------------------- RUN -------------------------
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
