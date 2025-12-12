@@ -1,11 +1,17 @@
-
-
 from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
 import requests
 from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
 
+# Allow your Netlify domain to access the backend
+CORS(app, resources={r"/*": {"origins": "https://webscannerr.netlify.app"}})
+
+
+# -------------------------
+#   Vulnerability Scanner
+# -------------------------
 class WebVulnScanner:
     def __init__(self):
         self.results = []
@@ -37,11 +43,12 @@ class WebVulnScanner:
             },
             'Security Header Missing': {
                 'type': 'Security Header Missing',
-                'description': 'Important header missing',
+                'description': 'Important security header missing',
                 'severity': 'Medium'
             }
         }
 
+    # ---------------------- XSS Test ----------------------
     def test_xss(self, url, param, endpoint):
         for payload in self.xss_payloads:
             test_url = f"{url}{endpoint}?{param}={payload}"
@@ -53,6 +60,7 @@ class WebVulnScanner:
                 pass
         return False, None
 
+    # ---------------------- SQLi Test ----------------------
     def test_sqli(self, url, param, endpoint):
         for payload in self.sqli_payloads:
             test_url = f"{url}{endpoint}?{param}={payload}"
@@ -64,6 +72,7 @@ class WebVulnScanner:
                 pass
         return False, None
 
+    # ---------------------- Header Test ----------------------
     def test_headers(self, full_url):
         required = ['X-Frame-Options', 'Content-Security-Policy', 'Strict-Transport-Security']
         issues = []
@@ -76,10 +85,11 @@ class WebVulnScanner:
             pass
         return issues
 
+    # ---------------------- Endpoint Scan ----------------------
     def scan_endpoint(self, base_url, endpoint):
         result = {'endpoint': endpoint, 'vulnerabilities': [], 'risk_score': 0}
 
-        # ---- XSS ----
+        # XSS
         for param in ['q', 'search', 'id', 'name']:
             ok, payload = self.test_xss(base_url, param, endpoint)
             if ok:
@@ -88,7 +98,7 @@ class WebVulnScanner:
                 result['vulnerabilities'].append(v)
                 result['risk_score'] += 8
 
-        # ---- SQLi ----
+        # SQL Injection
         for param in ['id', 'user', 'page']:
             ok, payload = self.test_sqli(base_url, param, endpoint)
             if ok:
@@ -97,7 +107,7 @@ class WebVulnScanner:
                 result['vulnerabilities'].append(v)
                 result['risk_score'] += 10
 
-        # ---- Headers ----
+        # Security Headers
         issues = self.test_headers(base_url + endpoint)
         for i in issues:
             v = self.remediations['Security Header Missing'].copy()
@@ -111,9 +121,11 @@ class WebVulnScanner:
 scanner = WebVulnScanner()
 
 
+# ------------------------- ROUTES -------------------------
+
 @app.route("/")
-def index():
-    return render_template("index.html")
+def home():
+    return "Backend is running!"   # Render doesn't show templates
 
 
 @app.route("/scan", methods=["POST"])
@@ -123,6 +135,7 @@ def scan():
     endpoints = data.get("endpoints", ["/", "/login", "/search", "/admin", "/api/users"])
 
     scanner.results = []
+
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(scanner.scan_endpoint, target_url, ep) for ep in endpoints]
         for f in futures:
@@ -135,8 +148,10 @@ def scan():
         "total_vulns": sum(len(r["vulnerabilities"]) for r in scanner.results),
         "risk_score": sum(r["risk_score"] for r in scanner.results)
     }
+
     return jsonify(response)
 
 
+# ------------------------- RUN -------------------------
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
