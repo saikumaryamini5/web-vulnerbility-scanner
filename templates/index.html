@@ -88,6 +88,10 @@ async function scan() {
     document.getElementById("loading").style.display = "block";
     document.getElementById("results").style.display = "none";
 
+
+
+
+
     const r = await fetch("/scan", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -100,6 +104,9 @@ async function scan() {
 
     document.getElementById("loading").style.display = "none";
 }
+
+
+
 
 function showResults(data) {
     document.getElementById("summary").innerHTML = `
